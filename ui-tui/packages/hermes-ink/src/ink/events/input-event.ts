@@ -5,44 +5,16 @@ import { Event } from './event.js'
 const inputForSpecialSequence = (name: string, shift: boolean): string => {
   const input = name === 'space' ? ' ' : name === 'return' || name === 'escape' ? '' : name
 
-/**
- * Input text for a CSI-u / modifyOtherKeys-encoded key, preserving the
- * shifted character. Both protocols report the *unshifted* codepoint (kitty
- * reports the lowercase letter; xterm modifyOtherKeys reports the lowercase
- * ASCII value), so a Shift+letter arrives as name='i', shift=true. Inserting
- * `name` verbatim drops the capital (#37680). When Shift is the SOLE
- * modifier, uppercase the decoded character instead — toUpperCase() handles
- * every cased script, not just a-z (non-Latin layouts, #87631). Chorded
- * Shift (ctrl/alt/meta/super) keys are bindings, not text, and keep the
- * plain name so existing keymap lookups still match.
- */
-const inputForShiftedKey = (keypress: ParsedKey): string => {
-  const soleShift =
-    keypress.shift && !keypress.ctrl && !keypress.meta && !keypress.option && !keypress.super
-
-  if (!soleShift) {
-    return inputForSpecialSequence(keypress.name ?? '')
+  // Extended-key protocols (CSI u / xterm modifyOtherKeys) report printable
+  // letters as their lowercase keycode, so Shift+R arrives as name 'r' with
+  // shift=true. Re-apply shift to a single lowercase letter so the composer
+  // receives 'R', not 'r'. Keybinding consumers still see the lowercase
+  // canonical name via key.name — only the inserted text is case-restored.
+  if (shift && input.length === 1 && input >= 'a' && input <= 'z') {
+    return input.toUpperCase()
   }
 
-  const base = inputForSpecialSequence(keypress.name ?? '')
-
-  // Only single characters can be case-shifted; multi-char names ('return',
-  // 'space', arrows) have no shifted glyph. space is already resolved to ' '
-  // by inputForSpecialSequence and has no case.
-  if (base.length !== 1) {
-    return base
-  }
-
-  const shifted = base.toUpperCase()
-
-  // Guard against scripts where toUpperCase() changes string length (e.g.
-  // ß → SS, ﬁ → FI): inserting multi-char text for one keypress would
-  // corrupt the composer buffer, so keep the base character there.
-  if (shifted.length !== 1) {
-    return base
-  }
-
-  return shifted
+  return input
 }
 
 export type Key = {
@@ -152,7 +124,7 @@ function parseKey(keypress: ParsedKey): [Key, string] {
       // so the raw "[57358u" doesn't leak into the prompt. See #38781.
       input = ''
     } else {
-      input = inputForShiftedKey(keypress)
+      input = inputForSpecialSequence(keypress.name, keypress.shift)
     }
 
     processedAsSpecialSequence = true
@@ -170,7 +142,7 @@ function parseKey(keypress: ParsedKey): [Key, string] {
       // guards against future terminal behavior.
       input = ''
     } else {
-      input = inputForShiftedKey(keypress)
+      input = inputForSpecialSequence(keypress.name, keypress.shift)
     }
 
     processedAsSpecialSequence = true
