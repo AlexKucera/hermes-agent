@@ -2,8 +2,8 @@ import { nonAlphanumericKeys, type ParsedKey } from '../parse-keypress.js'
 
 import { Event } from './event.js'
 
-const inputForSpecialSequence = (name: string): string =>
-  name === 'space' ? ' ' : name === 'return' || name === 'escape' ? '' : name
+const inputForSpecialSequence = (name: string, shift: boolean): string => {
+  const input = name === 'space' ? ' ' : name === 'return' || name === 'escape' ? '' : name
 
 /**
  * Input text for a CSI-u / modifyOtherKeys-encoded key, preserving the
