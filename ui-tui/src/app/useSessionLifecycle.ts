@@ -206,6 +206,10 @@ export function useSessionLifecycle(opts: UseSessionLifecycleOptions) {
       }
 
       const previousSid = getUiState().sid
+      // alex-customizations: /new inherits the current session's cwd. Without this the
+      // create call sends no cwd and the server falls back to TERMINAL_CWD, which drifts
+      // to $HOME once the gateway lazily imports gateway.run (upstream #86413).
+      const previousCwd = getUiState().info?.cwd || ''
 
       if (!keepCurrent) {
         await closeSession(previousSid)
@@ -213,7 +217,7 @@ export function useSessionLifecycle(opts: UseSessionLifecycleOptions) {
 
       const r = await rpc<SessionCreateResponse>('session.create', {
         cols: colsRef.current,
-        ...(STARTUP_WORKSPACE_CWD ? { cwd: STARTUP_WORKSPACE_CWD } : {})
+        ...(STARTUP_WORKSPACE_CWD ? { cwd: STARTUP_WORKSPACE_CWD } : previousCwd ? { cwd: previousCwd } : {})
       })
 
       if (!r) {
