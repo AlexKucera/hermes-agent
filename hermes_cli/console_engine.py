@@ -225,7 +225,7 @@ class _CliSurface:
 
 # Memoized: the surface is process-static, but the dashboard opens a fresh engine per
 # /api/console connection and would otherwise re-import + re-parse it on every reconnect.
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _surface_summaries(surface: _CliSurface, root: str) -> dict[tuple[str, ...], str]:
     try:
         return _summaries_from_parser(surface.build(root, live=False))
@@ -292,8 +292,7 @@ _CLI_FAMILIES: dict[str, tuple[_CliSurface, str]] = {
     "memory": (_sub("memory", "build_memory_parser", "cmd_memory"), "status, *off, *reset"),
     "auth": (
         _sub("auth", "build_auth_parser", "cmd_auth"),
-        "list, status, *reset, *priority, *refresh, *add, *remove, *logout, spotify status, *spotify login, "
-        "*spotify logout"),
+        "list, status, *reset, *priority, *refresh, *add, *remove, *logout"),
     "pairing": (
         _sub("pairing", "build_pairing_parser", "cmd_pairing"),
         "list, *approve, *revoke, *clear-pending"),
@@ -660,6 +659,8 @@ def _guard_exports(db, session_ids: list[str]) -> None:
 
 @_captured
 def _sessions_export(_engine: HermesConsoleEngine, args: list[str]) -> None:
+    from hermes_cli.session_export import export_projection
+
     ns = _parse("sessions export", args, "output", "--source", "--session-id")
     with _session_db() as db:
         if ns.session_id:
@@ -667,15 +668,13 @@ def _sessions_export(_engine: HermesConsoleEngine, args: list[str]) -> None:
             if not resolved_session_id:
                 raise ConsoleCommandError(f"Session '{ns.session_id}' not found.")
             _guard_exports(db, [resolved_session_id])
-            # Transfer projection: every row with its active/compacted flags, so an import of this
-            # JSONL restores a compacted session's whole history instead of only its live rows.
-            rows = [db.export_session(resolved_session_id, include_inactive=True)]
+            rows = [db.export_session(resolved_session_id, **export_projection(False))]
             if not rows[0]:
                 raise ConsoleCommandError(f"Session '{ns.session_id}' not found.")
         else:
             found = db.search_sessions(source=ns.source, limit=100000)
             _guard_exports(db, [session["id"] for session in found])
-            rows = db.export_all(source=ns.source, include_inactive=True)
+            rows = db.export_all(source=ns.source, **export_projection(False))
         text = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
         if text:
             text += "\n"
